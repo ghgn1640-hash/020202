@@ -1,0 +1,223 @@
+# 020202 <!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>NINJA VOICE OS | ULTIMATE CONVERSATION</title>
+    <style>
+        /* PHẦN 1: GIAO DIỆN HOLOGRAM MATRIX - THIẾT KẾ CỰC KỲ CHI TIẾT */
+        :root {
+            --matrix-green: #00ff41;
+            --dark-void: #020202;
+            --ui-blue: #00e5ff;
+            --warning-amber: #ffcc00;
+        }
+
+        * { box-sizing: border-box; cursor: crosshair; }
+
+        body {
+            margin: 0; background: var(--dark-void);
+            color: var(--matrix-green);
+            font-family: 'Consolas', 'Courier New', monospace;
+            height: 100vh; display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Hiệu ứng màn hình nhiễu (Scanline effect) */
+        body::before {
+            content: " "; position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100; background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        /* Khu vực hiển thị nội dung chat */
+        #chat-container {
+            flex: 1; overflow-y: auto; padding: 30px;
+            display: flex; flex-direction: column; gap: 15px;
+            scrollbar-width: thin; scrollbar-color: var(--matrix-green) transparent;
+        }
+
+        .message {
+            max-width: 80%; padding: 15px 20px; border-radius: 2px;
+            position: relative; animation: fadeIn 0.3s ease;
+            line-height: 1.5; font-size: 1.1rem;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .ai-msg {
+            align-self: flex-start; border-left: 3px solid var(--matrix-green);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .user-msg {
+            align-self: flex-end; border-right: 3px solid var(--ui-blue);
+            background: rgba(0, 229, 255, 0.05); color: var(--ui-blue);
+        }
+
+        /* Khu vực nhập liệu (Bàn phím luôn sẵn sàng) */
+        .input-area {
+            background: #0a0a0a; border-top: 1px solid #333;
+            padding: 20px; display: flex; align-items: center; gap: 15px;
+            z-index: 101;
+        }
+
+        #user-input {
+            flex: 1; background: transparent; border: 1px solid #444;
+            color: var(--ui-blue); padding: 15px; font-size: 1.2rem;
+            outline: none; transition: border 0.3s;
+            font-family: inherit;
+        }
+
+        #user-input:focus { border-color: var(--ui-blue); box-shadow: 0 0 15px rgba(0, 229, 255, 0.2); }
+
+        /* Vòng tròn sóng âm AI (Sẽ rung khi loa phát) */
+        .ai-status-orb {
+            width: 60px; height: 60px; border-radius: 50%;
+            border: 2px solid var(--matrix-green);
+            display: flex; justify-content: center; align-items: center;
+            position: relative;
+        }
+
+        .orb-inner {
+            width: 30px; height: 30px; background: var(--matrix-green);
+            border-radius: 50%; transition: 0.2s;
+        }
+
+        .speaking { animation: pulseOrb 0.5s infinite; }
+
+        @keyframes pulseOrb {
+            0% { transform: scale(1); box-shadow: 0 0 0px var(--matrix-green); }
+            50% { transform: scale(1.2); box-shadow: 0 0 20px var(--matrix-green); }
+            100% { transform: scale(1); box-shadow: 0 0 0px var(--matrix-green); }
+        }
+
+        /* Panel thông tin phụ (Metadata) */
+        .header {
+            padding: 10px 20px; background: #000; border-bottom: 1px solid #222;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.8rem; letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div>NINJA-CORE PROTOCOL: ACTIVE</div>
+    <div id="sys-clock">00:00:00</div>
+    <div style="color: var(--warning-amber)">SECURITY: BYPASSED</div>
+</header>
+
+<div id="chat-container">
+    <div class="message ai-msg">
+        [HỆ THỐNG]: Chào mừng Chủ tịch Ninja. Bàn phím đã được khóa tiêu điểm (Auto-focus). Hệ thống loa đã sẵn sàng. Mời ngài ra lệnh.
+    </div>
+</div>
+
+<div class="input-area">
+    <div class="ai-status-orb" id="orb"><div class="orb-inner"></div></div>
+    <input type="text" id="user-input" placeholder="Nhập lệnh hoặc nói chuyện với AI..." autocomplete="off">
+    <button id="voice-btn" style="background: none; border: 1px solid var(--matrix-green); color: var(--matrix-green); padding: 10px; cursor: pointer;">MIC</button>
+</div>
+
+<script>
+    /* PHẦN 2: THUẬT TOÁN ĐIỀU KHIỂN TỰ ĐỘNG - KẾT NỐI LOA VÀ CHỮ */
+
+    const inputField = document.getElementById('user-input');
+    const chatContainer = document.getElementById('chat-container');
+    const orb = document.getElementById('orb');
+
+    // 1. LUÔN LUÔN HIỆN BÀN PHÍM (AUTO-FOCUS)
+    // Dù Ninja có bấm đi đâu, bàn phím sẽ tự quay lại ô nhập liệu sau 100ms
+    document.addEventListener('click', () => {
+        setTimeout(() => inputField.focus(), 100);
+    });
+
+    // 2. HỆ THỐNG PHÁT LOA TỰ ĐỘNG (TEXT-TO-SPEECH)
+    function ninjaSpeak(text) {
+        window.speechSynthesis.cancel(); // Ngắt câu cũ nếu đang nói dở
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'vi-VN';
+        utterance.rate = 1.0;
+        utterance.pitch = 0.9; // Giọng nam trầm quyền lực
+
+        utterance.onstart = () => orb.classList.add('speaking');
+        utterance.onend = () => orb.classList.remove('speaking');
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // 3. XỬ LÝ NHẬN DIỆN VÀ PHẢN HỒI
+    function addMessage(text, isAi) {
+        const div = document.createElement('div');
+        div.className = `message ${isAi ? 'ai-msg' : 'user-msg'}`;
+        div.innerText = isAi ? `[AI]: ${text}` : `[NINJA]: ${text}`;
+        chatContainer.appendChild(div);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        if (isAi) {
+            ninjaSpeak(text); // CHỮ HIỆN LÊN -> LOA PHÁT NGAY
+        }
+    }
+
+    // 4. BỘ NÃO LOGIC (AI THINKING)
+    function processInput(query) {
+        let response = "";
+        const q = query.toLowerCase();
+
+        if (q.includes("phóng") || q.includes("tên lửa")) {
+            response = "Đã nhận lệnh từ Chủ tịch. Quy trình phóng tên lửa 1999 bắt đầu. Nhiên liệu 100%. Áp suất ổn định. Khai hỏa!";
+        } else if (q.includes("black squad")) {
+            response = "Biệt đội da đen đang trong trạng thái chờ. Mọi thành viên đã sẵn sàng thực hiện nhiệm vụ bí mật.";
+        } else if (q.includes("hack")) {
+            response = "Đang xâm nhập vào cơ sở dữ liệu đối phương. Tường lửa đã bị phá vỡ. Chủ tịch đã có toàn quyền truy cập.";
+        } else if (q.includes("hello") || q.includes("chào")) {
+            response = "Chào Chủ tịch Ninja. Tôi luôn sẵn sàng lắng nghe và thực hiện mọi yêu cầu của ngài.";
+        } else {
+            response = "Lệnh '" + query + "' đã được ghi nhận vào nhật ký hệ thống. Tôi đang xử lý dữ liệu này.";
+        }
+
+        setTimeout(() => addMessage(response, true), 500);
+    }
+
+    // Lắng nghe phím Enter từ bàn phím
+    inputField.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && inputField.value.trim() !== "") {
+            const val = inputField.value;
+            addMessage(val, false);
+            processInput(val);
+            inputField.value = ""; // Xóa ô nhập sau khi gửi
+        }
+    });
+
+    // 5. HỆ THỐNG NHẬN DIỆN GIỌNG NÓI (VOICE OVERRIDE)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'vi-VN';
+        
+        document.getElementById('voice-btn').onclick = () => recognition.start();
+        
+        recognition.onresult = (event) => {
+            const result = event.results[0][0].transcript;
+            inputField.value = result; // Hiện chữ vào ô nhập
+            addMessage(result, false);
+            processInput(result);
+        };
+    }
+
+    // Cập nhật đồng hồ hệ thống
+    setInterval(() => {
+        document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString();
+    }, 1000);
+
+    // Khởi động
+    window.onload = () => {
+        inputField.focus();
+        ninjaSpeak("Hệ thống Ninja Voice OS đã khởi động. Bàn phím và loa đã kết nối thành công.");
+    };
+</script>
+</body>
+</html>
